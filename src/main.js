@@ -59,6 +59,8 @@ async function main() {
   // 解析命令行参数
   const limitArg = process.argv.find(arg => arg.startsWith('--limit='));
   const resetFlag = process.argv.includes('--reset');
+  const latestFlag = process.argv.includes('--latest');
+  const checkFlag = process.argv.includes('--check');
   
   let limitCount = null;
   if (limitArg) {
@@ -73,9 +75,21 @@ async function main() {
     saveProgress(-1, 0);
   }
   
+  if (latestFlag) {
+    console.log('🆕 启用最新文章优先模式，从第1篇（最新）开始');
+    progress = { lastSyncedIndex: -1, totalProcessed: 0 };
+  }
+  
+  if (checkFlag) {
+    console.log('🔍 检查模式：只查看文章信息，不执行同步');
+  }
+  
   console.log(`📊 当前进度: 已处理 ${progress.totalProcessed} 篇文章，从索引 ${progress.lastSyncedIndex + 1} 开始`);
   if (limitCount) {
     console.log(`🎯 本次限制: 最多处理 ${limitCount} 篇文章`);
+  }
+  if (latestFlag) {
+    console.log(`🆕 优先同步最新文章（不保存进度）`);
   }
 
   try {
@@ -85,7 +99,8 @@ async function main() {
 
     console.log('Getting material count...');
     const materialCount = await wechatAPI.getMaterialCount();
-    console.log(`✓ Found ${materialCount.news_count} articles`);
+    console.log(`✓ 微信素材统计:`, materialCount);
+    console.log(`📊 图文消息: ${materialCount.news_count} 条`);
 
     let processedCount = progress.totalProcessed;
     let errorCount = 0;
@@ -142,29 +157,38 @@ async function main() {
                 }
                 
                 const currentIndex = offset + itemIndex;
-                console.log(`📝 Processing [${currentIndex + 1}/${materialCount.news_count}]: ${newsItem.title}`);
+                const publishDate = new Date(item.update_time * 1000).toISOString().split('T')[0];
+                console.log(`📝 [${currentIndex + 1}/${materialCount.news_count}] ${publishDate}: ${newsItem.title}`);
                 
-                const post = {
-                  media_id: item.media_id,
-                  title: newsItem.title,
-                  content: newsItem.content,
-                  author: newsItem.author,
-                  update_time: item.update_time,
-                  url: newsItem.url,
-                  digest: newsItem.digest
-                };
+                if (!checkFlag) {
+                  const post = {
+                    media_id: item.media_id,
+                    title: newsItem.title,
+                    content: newsItem.content,
+                    author: newsItem.author,
+                    update_time: item.update_time,
+                    url: newsItem.url,
+                    digest: newsItem.digest
+                  };
 
-                await sanityService.createOrUpdatePost(post);
-                console.log(`✅ Synced: ${newsItem.title}`);
-                processedCount++;
-                currentlyProcessedInThisRun++;
-                
-                // 保存进度
-                saveProgress(currentIndex, processedCount);
-                
-                // 每处理一篇文章后等待60秒，给翻译API充足时间处理
-                console.log('⏳ 等待60秒，让翻译API充分处理...');
-                await new Promise(resolve => setTimeout(resolve, 60000));
+                  await sanityService.createOrUpdatePost(post);
+                  console.log(`✅ Synced: ${newsItem.title}`);
+                  processedCount++;
+                  currentlyProcessedInThisRun++;
+                  
+                  // 保存进度
+                  if (!latestFlag) {
+                    saveProgress(currentIndex, processedCount);
+                  }
+                  
+                  // 每处理一篇文章后等待60秒，给翻译API充足时间处理
+                  console.log('⏳ 等待60秒，让翻译API充分处理...');
+                  await new Promise(resolve => setTimeout(resolve, 60000));
+                } else {
+                  // 检查模式：只显示信息，不同步
+                  console.log(`🔍 检查: 作者=${newsItem.author || 'WeChat'}, 摘要=${newsItem.digest || '无'}`);
+                  currentlyProcessedInThisRun++;
+                }
               }
             } catch (error) {
               console.error(`❌ Error processing article:`, error.message);
