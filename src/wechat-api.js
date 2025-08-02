@@ -92,6 +92,54 @@ class WeChatAPI {
       throw new Error(`Error getting material: ${error.message}`);
     }
   }
+
+  // 获取已发布的文章列表（不是永久素材）
+  async getPublishedArticles(offset = 0, count = 20) {
+    const token = await this.getToken();
+    
+    try {
+      const response = await axios.post(
+        `https://api.weixin.qq.com/cgi-bin/freepublish/batchget?access_token=${token}`,
+        {
+          offset: offset,
+          count: count,
+          no_content: 0 // 0-返回content字段，1-不返回content字段
+        }
+      );
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`WeChat API error: ${response.data.errmsg}`);
+      }
+
+      return response.data;
+    } catch (error) {
+      throw new Error(`Error getting published articles: ${error.message}`);
+    }
+  }
+
+  // 获取已发布文章的总数
+  async getPublishedCount() {
+    const token = await this.getToken();
+    
+    try {
+      const response = await axios.post(
+        `https://api.weixin.qq.com/cgi-bin/freepublish/batchget?access_token=${token}`,
+        {
+          offset: 0,
+          count: 1,
+          no_content: 1
+        }
+      );
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`WeChat API error: ${response.data.errmsg}`);
+      }
+
+      return response.data.total_count || 0;
+    } catch (error) {
+      throw new Error(`Error getting published count: ${error.message}`);
+    }
+  }
 }
 
 module.exports = WeChatAPI;
